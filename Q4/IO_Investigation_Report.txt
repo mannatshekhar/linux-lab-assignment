@@ -1,0 +1,176 @@
+====================================================
+      FILE ACCESS AND I/O INVESTIGATION REPORT
+====================================================
+Date: June 28, 2026
+Prepared by: root (Linux Support Engineer)
+
+----------------------------------------------------
+1. OPEN FILES IDENTIFIED
+----------------------------------------------------
+Command: ls -la /proc/$$/fd/
+Output:
+  total 0
+  dr-x------ 2 root root  4 Jun 28 16:11 .
+  dr-xr-xr-x 9 root root  0 Jun 28 16:11 ..
+  lr-x------ 1 root root 64 Jun 28 16:11 0 -> pipe:[1138]
+  l-wx------ 1 root root 64 Jun 28 16:11 1 -> pipe:[1139]
+  l-wx------ 1 root root 64 Jun 28 16:11 2 -> pipe:[1140]
+
+Command: cat /proc/$$/status
+Output (selected):
+  Name:  sh
+  Pid:   680
+  VmRSS: 1984 kB
+  Threads: 1
+
+Observation:
+Every running process has a directory in /proc/<PID>/fd/ listing all its open
+file descriptors as symbolic links. In this environment, the shell has three
+standard descriptors open — stdin (0), stdout (1), and stderr (2) — connected
+to pipes for inter-process communication. The /proc filesystem is a virtual
+filesystem that exposes kernel data structures to user space for inspection.
+
+----------------------------------------------------
+2. FILE DESCRIPTOR OBSERVATIONS
+----------------------------------------------------
+Standard Linux File Descriptors:
+  FD 0 → stdin  (standard input)   → pipe:[1138]
+  FD 1 → stdout (standard output)  → pipe:[1139]
+  FD 2 → stderr (standard error)   → pipe:[1140]
+
+Command: ls -la /proc/$$/fd/0 /proc/$$/fd/1 /proc/$$/fd/2
+Output:
+  lr-x------ 1 root root 64  fd/0 -> pipe:[1138]   (read-only)
+  l-wx------ 1 root root 64  fd/1 -> pipe:[1139]   (write-only)
+  l-wx------ 1 root root 64  fd/2 -> pipe:[1140]   (write-only)
+
+Observation:
+File descriptors are non-negative integers that the kernel uses to track open
+resources. FD 0 (stdin) is read-only while FD 1 (stdout) and FD 2 (stderr) are
+write-only. In this environment they point to pipes rather than a terminal,
+which is typical in non-interactive script execution. When a process opens a
+file, it receives the next available FD (starting at 3).
+
+----------------------------------------------------
+3. OUTPUT REDIRECTION AND ERROR REDIRECTION RESULTS
+----------------------------------------------------
+
+--- Standard Output Redirection (>) ---
+Command: echo "Hello World - stdout test" > /home/claude/stdout_test.txt
+Command: cat /home/claude/stdout_test.txt
+Output:  "Hello World - stdout test"
+Result:  stdout was redirected from terminal to file (overwrites)
+
+--- Append Redirection (>>) ---
+Command: echo "First line"  > /home/claude/append_test.txt
+Command: echo "Second line" >> /home/claude/append_test.txt
+Command: cat /home/claude/append_test.txt
+Output:
+  First line
+  Second line
+Result:  >> appends to file without overwriting existing content
+
+--- Error Redirection (2>) ---
+Command: ls /nonexistent_directory 2> /home/claude/error_output.txt
+Command: cat /home/claude/error_output.txt
+Output:  "ls: cannot access '/nonexistent_directory': No such file or directory"
+Result:  stderr (FD 2) was captured to file; terminal showed nothing
+
+--- Combined stdout + stderr (2>&1) ---
+Command: ls /home/claude/ /nonexistent_dir 2>&1 | tee /home/claude/combined_output.txt
+Output:  Both the directory listing AND the error message appeared together
+Result:  2>&1 merges stderr into stdout stream; tee splits to file AND screen
+
+--- Input Redirection (<) ---
+Command: wc -l < /home/claude/input_test.txt
+Output:  3
+Result:  File contents fed to wc via stdin redirection (3 lines counted)
+
+--- /dev/null - Discarding Output ---
+Command: ls /nonexistent 2>/dev/null
+Output:  (nothing — error silently discarded)
+Result:  /dev/null is a special device that discards all data written to it
+
+--- tee Command ---
+Command: echo "tee test output" | tee /home/claude/tee_output.txt
+Output:  "tee test output" (displayed on screen AND written to file)
+Result:  tee splits I/O stream: writes to both stdout and a file simultaneously
+
+Observation:
+Linux I/O redirection provides powerful control over where command input
+comes from and where output goes. The distinction between stdout (1) and
+stderr (2) allows programs to separate normal output from error messages.
+Combining 2>&1 merges them into one stream, useful for logging all output.
+
+----------------------------------------------------
+4. RESOURCE LIMITS OBSERVED
+----------------------------------------------------
+Command: ulimit -a
+Output:
+  time(seconds):          unlimited
+  file(blocks):           unlimited
+  data(kbytes):           unlimited
+  stack(kbytes):          8192
+  coredump(blocks):       0
+  memory(kbytes):         unlimited
+  locked memory(kbytes):  8192
+  processes:              15955
+  nofiles (open files):   1024
+  vmemory(kbytes):        unlimited
+  locks:                  unlimited
+  real-time priority:     0
+
+Command: ulimit -n
+Output:  1024  (maximum open files per process)
+
+Command: cat /proc/$$/limits | grep "open files"
+Output:  Max open files   1024   4096   files
+         (soft limit: 1024, hard limit: 4096)
+
+Observation:
+Resource limits prevent any single process from monopolizing system resources.
+The most relevant limit for file I/O is 'nofiles' (1024 open files). The soft
+limit (1024) can be raised by the process up to the hard limit (4096) using
+'ulimit -n <value>'. The stack size limit (8192 KB) and max processes (15955)
+also impact how applications interact with the OS.
+
+----------------------------------------------------
+5. EXPLANATION: HOW LINUX MANAGES FILE I/O
+----------------------------------------------------
+
+Linux File I/O Architecture:
+
+  1. Virtual File System (VFS):
+     Linux uses a VFS abstraction layer that allows different filesystems
+     (ext4, tmpfs, procfs, etc.) to present a unified interface. All file
+     operations go through the VFS layer regardless of the underlying storage.
+
+  2. File Descriptor Table:
+     Each process maintains a file descriptor table (visible in /proc/<PID>/fd/).
+     When a file is opened with open(), the kernel returns an integer FD that
+     the process uses for all subsequent read/write operations.
+
+  3. I/O Streams and Redirection:
+     The shell implements redirection by duplicating file descriptors before
+     executing commands. For "> file", it opens the file and uses dup2() to
+     replace FD 1 (stdout) with the file's FD. The process writes to "stdout"
+     without knowing the output goes to a file.
+
+  4. Pipes:
+     Pipes (|) create an anonymous in-memory buffer. The kernel connects the
+     stdout of the left command to the stdin of the right command via pipe(),
+     enabling command chaining without temporary files.
+
+  5. Buffered vs Direct I/O:
+     By default, the kernel buffers file writes in the page cache for
+     performance, flushing to disk periodically. Direct I/O bypasses this
+     cache and writes directly to storage (used in databases).
+
+  6. /proc Virtual Filesystem:
+     /proc is a pseudo-filesystem where files are kernel data structures
+     presented as regular files. Reading /proc/$$/fd reveals open descriptors;
+     reading /proc/meminfo shows memory usage — no actual disk I/O occurs.
+
+====================================================
+               END OF REPORT
+====================================================
