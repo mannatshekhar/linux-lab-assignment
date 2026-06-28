@@ -1,0 +1,145 @@
+====================================================
+     SECURE PROJECT WORKSPACE SETUP REPORT
+====================================================
+Date: June 28, 2026
+Prepared by: root (Linux Support Engineer)
+
+----------------------------------------------------
+1. DIRECTORY STRUCTURE CREATED
+----------------------------------------------------
+Commands:
+  mkdir -p /home/claude/project_workspace/docs
+  mkdir -p /home/claude/project_workspace/src
+  mkdir -p /home/claude/project_workspace/config
+
+Structure:
+  project_workspace/
+  ├── docs/         (project documentation)
+  │   └── project_plan.txt
+  ├── src/          (source code files)
+  │   └── main.py
+  └── config/       (configuration files - most sensitive)
+      └── settings.conf
+
+Observation:
+The 'mkdir -p' command creates the full directory path recursively, including
+any missing parent directories. Three subdirectories were created to separate
+documentation, source code, and configuration files — following the principle
+of least privilege by organizing data by sensitivity level.
+
+----------------------------------------------------
+2. FILE PERMISSIONS BEFORE AND AFTER MODIFICATION
+----------------------------------------------------
+
+--- BEFORE (Default with umask 0022) ---
+project_workspace/          drwxr-xr-x  (755)
+  docs/                     drwxr-xr-x  (755)
+    project_plan.txt        -rw-r--r--  (644)
+  src/                      drwxr-xr-x  (755)
+    main.py                 -rw-r--r--  (644)
+  config/                   drwxr-xr-x  (755)
+    settings.conf           -rw-r--r--  (644)
+
+--- AFTER (Secured permissions) ---
+project_workspace/          drwxr-x---  (750)
+  docs/                     drwxr-x---  (750)
+    project_plan.txt        -rw-r-----  (640)
+  src/                      drwxr-x---  (750)
+    main.py                 -rw-r-----  (640)
+  config/                   drwx------  (700)  ← most restrictive
+    settings.conf           -rw-------  (600)  ← most restrictive
+
+Commands used:
+  chmod 750 /home/claude/project_workspace/
+  chmod 750 /home/claude/project_workspace/docs/
+  chmod 750 /home/claude/project_workspace/src/
+  chmod 700 /home/claude/project_workspace/config/
+  chmod 640 /home/claude/project_workspace/docs/project_plan.txt
+  chmod 640 /home/claude/project_workspace/src/main.py
+  chmod 600 /home/claude/project_workspace/config/settings.conf
+
+Observation:
+Permissions were tightened using chmod. The 'other' category was completely
+removed (no world-readable access). The config directory received 700/600
+permissions as it contains the most sensitive data. The 'r--' (read) access
+was removed from 'others' to prevent unauthorized users from viewing content.
+
+----------------------------------------------------
+3. OWNERSHIP DETAILS
+----------------------------------------------------
+Command: ls -la /home/claude/project_workspace/
+Command: stat /home/claude/project_workspace/config/settings.conf
+
+Output (ownership):
+  Owner (User):  root (UID: 0)
+  Group:         root (GID: 0)
+  All files and directories owned by: root:root
+
+Observation:
+All files and directories are owned by root user and root group. In a real
+team environment, you would use 'chown' to assign proper user ownership and
+'chgrp' to assign group ownership (e.g., chown developer:projectteam file),
+allowing group members to access files while keeping outsiders locked out.
+
+----------------------------------------------------
+4. UMASK VALUE USED
+----------------------------------------------------
+Command: umask         (checked current value)
+Output:  0022          (system default)
+
+Command: umask 027     (set secure umask)
+Output:  0027          (new value confirmed)
+
+Explanation of umask 027:
+  - 0 (special bits): no setuid/setgid/sticky bit restrictions
+  - 2 (owner):        owner gets full permissions (no bits masked)
+  - 7 (group):        group loses write+execute (gets read only for files)
+  - 7 (others):       others lose ALL permissions (no access)
+
+Effect: New files will be created with 640 (-rw-r-----) permissions
+        New directories will be created with 750 (drwxr-x---) permissions
+
+Observation:
+The umask 027 ensures that any newly created files automatically have secure
+permissions — the group can read but not write, and others have no access at
+all. This is much more secure than the default 022 which allows world-readable
+files. Setting umask in /etc/profile makes it persistent across sessions.
+
+----------------------------------------------------
+5. HOW PERMISSIONS PROTECT PROJECT DATA
+----------------------------------------------------
+Linux Permission Model (rwxrwxrwx = user|group|others):
+
+  r (read)    = view file contents / list directory
+  w (write)   = modify file / create files in directory
+  x (execute) = run as program / enter directory (cd)
+
+Security layers applied in this workspace:
+
+  a) Principle of Least Privilege:
+     Each file has only the minimum permissions required. Configuration
+     files (600) can only be read/written by the owner — even group
+     members cannot access sensitive settings.
+
+  b) Group-based Access Control:
+     The 750/640 permissions allow team members in the same group to
+     read project files without being able to modify them, preventing
+     accidental or malicious changes.
+
+  c) No World Access:
+     Removing 'others' permissions (the last triplet) ensures that users
+     not part of the project group cannot access any project data, even
+     if they have a shell account on the same system.
+
+  d) Directory Execute Bit:
+     The execute (x) bit on directories controls whether users can 'cd'
+     into them. Without it, even if a user knows a filename, they cannot
+     navigate into the directory to access it.
+
+  e) Umask Prevention:
+     The umask 027 ensures future files created in this workspace
+     automatically inherit secure permissions without manual intervention.
+
+====================================================
+               END OF REPORT
+====================================================
