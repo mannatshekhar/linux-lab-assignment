@@ -1,0 +1,140 @@
+====================================================
+      FILE SYSTEM AND LINK ANALYSIS REPORT
+====================================================
+Date: June 28, 2026
+Prepared by: root (Linux Support Engineer)
+
+----------------------------------------------------
+1. INODE NUMBERS OF ALL FILES
+----------------------------------------------------
+Commands:
+  echo "This is the original file content..." > /home/claude/original_file.txt
+  ln  /home/claude/original_file.txt /home/claude/hard_link.txt
+  ln -s /home/claude/original_file.txt /home/claude/symbolic_link.txt
+  ls -li /home/claude/original_file.txt /home/claude/hard_link.txt /home/claude/symbolic_link.txt
+
+Output:
+  622593  -rw-r--r--  2  root  root  64   Jun 28  original_file.txt
+  622593  -rw-r--r--  2  root  root  64   Jun 28  hard_link.txt
+  622594  lrwxrwxrwx  1  root  root  30   Jun 28  symbolic_link.txt -> original_file.txt
+
+Inode Summary:
+  original_file.txt   →  Inode: 622593  (Link count: 2 after hard link created)
+  hard_link.txt       →  Inode: 622593  (SAME inode as original — same data block)
+  symbolic_link.txt   →  Inode: 622594  (DIFFERENT inode — stores only a path)
+
+Observation:
+The inode number reveals the identity of a file at the filesystem level. Hard
+links share the same inode (622593) as the original file, meaning they literally
+point to the same data blocks on disk. The symbolic link has its own separate
+inode (622594) and merely stores the path to the original file as text.
+
+----------------------------------------------------
+2. COMPARISON: HARD LINK VS SYMBOLIC LINK
+----------------------------------------------------
+
++------------------+---------------------------+---------------------------+
+| Property         | Hard Link                 | Symbolic Link             |
++------------------+---------------------------+---------------------------+
+| Inode            | Same as original (622593) | Different (622594)        |
+| Points to        | Actual data blocks        | Path string to original   |
+| Link count       | Increments original count | Does NOT increment count  |
+| After deleting   | Still works! Data survives| BROKEN - dangling pointer |
+| original         |                           |                           |
+| Cross-filesystem | NO (same fs only)         | YES (can span filesystems)|
+| File type shown  | Regular file (-)          | Symlink (l)               |
+| Can link to dir  | NO (generally restricted) | YES                       |
+| Size             | Same as original (64B)    | Size of path string (30B) |
++------------------+---------------------------+---------------------------+
+
+Observation:
+Hard links and symbolic links appear similar in usage but differ fundamentally
+in implementation. A hard link is an additional directory entry pointing to the
+same inode, while a symbolic link is an independent file containing a text path.
+This critical difference becomes apparent when the original file is deleted.
+
+----------------------------------------------------
+3. EFFECT OF DELETING THE ORIGINAL FILE
+----------------------------------------------------
+Command: rm /home/claude/original_file.txt
+
+--- Hard Link after deletion ---
+Command: cat /home/claude/hard_link.txt
+Output:  "This is the original file content for link analysis experiment."
+Result:  SUCCESS — data fully accessible
+
+Command: stat /home/claude/hard_link.txt
+Output:  Inode: 622593, Links: 1 (decremented from 2 to 1)
+
+--- Symbolic Link after deletion ---
+Command: cat /home/claude/symbolic_link.txt
+Output:  cat: /home/claude/symbolic_link.txt: No such file or directory
+Result:  FAILED — symbolic link is now BROKEN (dangling symlink)
+
+Explanation:
+When the original file was deleted, 'rm' only removed the directory entry
+(not the actual data). Since the hard link kept the link count at 1, the
+filesystem did NOT free the data blocks — the data survived through hard_link.txt.
+The symbolic link became a dangling reference pointing to a non-existent path.
+The filesystem only frees data blocks when the link count drops to 0.
+
+----------------------------------------------------
+4. METADATA COLLECTED USING LINUX UTILITIES
+----------------------------------------------------
+
+Command: stat /home/claude/hard_link.txt (after deletion of original)
+Output:
+  File:    /home/claude/hard_link.txt
+  Size:    64 bytes
+  Blocks:  8
+  Inode:   622593
+  Links:   1 (decremented after original entry removed)
+  Access:  (0644/-rw-r--r--)
+  Uid:     0 (root)
+  Gid:     0 (root)
+  Access time:  2026-06-28 16:10:46
+  Modify time:  2026-06-28 16:10:39  (last content change)
+  Change time:  2026-06-28 16:10:46  (inode metadata change - link count updated)
+
+Command: find /home/claude -maxdepth 1 -xtype l
+Output:  /home/claude/symbolic_link.txt   (identifies broken symlinks)
+
+Observation:
+The 'stat' utility reveals all inode metadata, including the three timestamps
+(atime, mtime, ctime) and hard link count. The 'find -xtype l' command is useful
+for identifying broken symbolic links, distinguishing between a valid symlink and
+a dangling one — an important skill for filesystem troubleshooting.
+
+----------------------------------------------------
+5. CONCLUSIONS FROM THE EXPERIMENT
+----------------------------------------------------
+
+Conclusion 1 - Hard Links Provide Data Redundancy:
+  Hard links act as aliases to the same data. Even after the "original"
+  directory entry is removed, the data persists as long as at least one
+  hard link exists. This is how some backup systems work.
+
+Conclusion 2 - Symbolic Links Are Path References Only:
+  A symbolic link contains only a text path. If the target is moved,
+  renamed, or deleted, the symlink becomes broken. They are flexible
+  but fragile compared to hard links.
+
+Conclusion 3 - Inode is the True File Identity:
+  The filename is just a label; the inode is the real file. Multiple
+  filenames (hard links) can share one inode. Understanding this is
+  essential for Linux administration and debugging.
+
+Conclusion 4 - Link Count Governs Data Lifecycle:
+  The filesystem only reclaims disk space when the inode's link count
+  reaches zero. Knowing this helps in understanding how 'rm' truly works
+  and why deleted files can sometimes be recovered if the blocks haven't
+  been overwritten.
+
+Conclusion 5 - Use Cases:
+  Hard Links → backups, preventing accidental deletion, saving space
+  Symbolic Links → creating shortcuts, linking across filesystems,
+                   version management (/usr/bin/python -> python3.10)
+
+====================================================
+               END OF REPORT
+====================================================
