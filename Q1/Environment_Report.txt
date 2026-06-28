@@ -1,0 +1,93 @@
+====================================================
+     LINUX ENVIRONMENT VERIFICATION REPORT
+====================================================
+Date: June 28, 2026
+Prepared by: root (Linux Support Engineer)
+
+----------------------------------------------------
+1. USERNAME AND GROUPS
+----------------------------------------------------
+Command: whoami
+Output: root
+
+Command: id
+Output: uid=0(root) gid=0(root) groups=0(root)
+
+Observation:
+The current user is 'root' with UID 0 and GID 0. The root user belongs
+to the 'root' group and has full administrative privileges on the system.
+This is the superuser account with unrestricted access to all system resources.
+Running as root means all permission checks are bypassed for most operations.
+
+----------------------------------------------------
+2. CURRENT SHELL
+----------------------------------------------------
+Command: cat /etc/passwd | grep "^root"
+Output: root:x:0:0:root:/root:/bin/bash
+
+Command: echo $0
+Output: /bin/bash (dash in non-interactive mode)
+
+Observation:
+The default shell configured for the root user is /bin/bash (Bourne Again Shell)
+as shown in /etc/passwd. Bash is the most widely used shell in Linux environments
+and supports scripting, command history, tab completion, and various built-in
+commands. In non-interactive scripts, /bin/sh (dash) may be invoked instead.
+
+----------------------------------------------------
+3. CURRENT WORKING DIRECTORY
+----------------------------------------------------
+Command: pwd
+Output: /home/claude/lab/Q1
+
+Observation:
+The current working directory is /home/claude/lab/Q1. The 'pwd' command prints
+the full absolute path of the current directory, helping confirm our location in
+the filesystem hierarchy. This is where files created without a full path will
+be stored by default.
+
+----------------------------------------------------
+4. LIST OF FILES AND DIRECTORIES IN WORKSPACE
+----------------------------------------------------
+Command: ls -la /home/claude/
+Output:
+  total 40
+  drwxr-xr-x 8 root root 4096 Jun 28 16:08 .
+  drwxr-xr-x 4 root root 4096 Apr 18 18:07 ..
+  drwxr-xr-x 5 root root 4096 Apr 18 18:12 .cache
+  drwxr-xr-x 3 root root 4096 Apr 18 18:10 .config
+  drwxr-xr-x 3 root root 4096 Apr 18 18:10 .local
+  drwxr-xr-x 3 root root 4096 Apr 18 18:12 .npm
+  drwxr-xr-x 3 root root 4096 Apr 18 18:12 .npm-global
+  -rw-r--r-- 1 root root   74 Apr 18 18:10 .npmrc
+  -rw-r--r-- 1 root root  215 Apr 18 18:10 .wget-hsts
+  drwxr-xr-x 3 root root 4096 Jun 28 16:08 lab
+
+Observation:
+The workspace contains several hidden configuration directories (.cache, .config,
+.local, .npm, .npm-global), configuration files (.npmrc, .wget-hsts), and a 'lab'
+directory created for this assignment. The 'ls -la' flags show all files including
+hidden ones (-a) with long-format details (-l) including permissions, ownership,
+size, and modification timestamps.
+
+----------------------------------------------------
+5. NETWORK CONNECTIVITY VERIFICATION
+----------------------------------------------------
+Command: curl -s --max-time 5 https://www.google.com -o /dev/null && echo "CONNECTED"
+Output: Network: CONNECTED
+
+Command: hostname
+Output: vm
+
+Command: hostname -I
+Output: 192.0.2.2
+
+Observation:
+The system has active network connectivity confirmed by a successful outbound HTTP
+request. The machine hostname is 'vm' and its assigned IP address is 192.0.2.2.
+Outbound internet access is available, which is essential for package management
+(apt), downloading updates, and accessing remote resources or APIs.
+
+====================================================
+               END OF REPORT
+====================================================
